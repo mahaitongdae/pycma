@@ -483,6 +483,20 @@ class CMAES(OOOptimizer):  # could also inherit from object
             _stdout.flush()
 
 
+class CMAES_GP(CMAES):
+    def __init__(self, xstart, sigma,  # mandatory
+                 popsize=CMAESParameters.default_popsize,
+                 ftarget=None,
+                 maxfevals='100 * popsize + '  # 100 iterations plus...
+                           '150 * (N + 3)**2 * popsize**0.5',
+                 randn=random_normalvariate):
+        super(CMAES_GP, self).__init__(self, xstart, sigma, popsize, ftarget, maxfevals, randn)
+
+    def tell(self, arx, fitvals):
+        super(CMAES_GP, self).tell(arx, fitvals)
+
+
+
 # -----------------------------------------------
 class CMAESDataLogger(_BaseDataLogger):  # could also inherit from object
     """data logger for class `CMAES`, that can record and plot data.
