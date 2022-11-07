@@ -278,12 +278,11 @@ class GaussianProcessOptimization(object):
         self._y = self._y[:-1, :]
 
     def get_confidential_interval(self, inputs):
-        """Recompute the confidence intervals form the GP.
+        """Get the confidence intervals from the GP.
 
         Parameters
         ----------
-        context: ndarray
-            Array that contains the context used to compute the sets
+        inputs: ndarray num of inputs by dimension of X
         """
         beta = self.beta(self.t)
         C = np.empty((inputs.shape[0], 2 * len(self.gps)), dtype=np.float)
@@ -299,6 +298,27 @@ class GaussianProcessOptimization(object):
             C[:, 2 * i] = mean - beta * std_dev
             C[:, 2 * i + 1] = mean + beta * std_dev
         return C
+
+    def get_mean_std_dev(self, inputs):
+        """Get the mean and std dev from the GP.
+
+        Parameters
+        ----------
+        inputs: ndarray num of inputs by dimension of X
+        """
+        # Iterate over all functions
+        means, std_devs = np.empty((inputs.shape[0], len(self.gps)), dtype=np.float)
+        for i in range(len(self.gps)):
+            # Evaluate acquisition function
+            mean, var = self.gps[i].predict_noiseless(self.inputs)
+
+            mean = mean.squeeze()
+            std_dev = np.sqrt(var.squeeze())
+
+            # Update confidence intervals
+            means[:, i] = mean - beta * std_dev
+            std_devs[:, i] = mean + beta * std_dev
+        return means, std_devs
 
 
 class SafeOpt(GaussianProcessOptimization):
