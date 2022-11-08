@@ -98,6 +98,8 @@ class GaussianProcessOptimization(object):
         self._y = None
         self._get_initial_xy()
 
+        self.gp_probes = np.random.rand(len(self._x), 100)
+
     @property
     def x(self):
         return self._x
@@ -248,7 +250,7 @@ class GaussianProcessOptimization(object):
             not_nan = ~np.isnan(y[:, i])
             if np.any(not_nan):
                 # Add data to GP (context already included in x)
-                self._add_data_point(gp, x[not_nan, :], y[not_nan, [i]])
+                self._add_data_point(gp, x[not_nan, :], y[not_nan, i].reshape([-1,1]))
 
         # Update global data stores
         self._x = np.concatenate((self._x, x), axis=0)
@@ -289,7 +291,7 @@ class GaussianProcessOptimization(object):
         # Iterate over all functions
         for i in range(len(self.gps)):
             # Evaluate acquisition function
-            mean, var = self.gps[i].predict_noiseless(self.inputs)
+            mean, var = self.gps[i].predict_noiseless(inputs)
 
             mean = mean.squeeze()
             std_dev = np.sqrt(var.squeeze())
@@ -319,6 +321,18 @@ class GaussianProcessOptimization(object):
             means[:, i] = mean - beta * std_dev
             std_devs[:, i] = mean + beta * std_dev
         return means, std_devs
+
+    def suggest_gradient(self, mean, direction_size=100):
+        mean = np.asarray(mean)
+        # opti_ucb = self.get_confidential_interval(mean)[:, 1]
+        directions = np.random.random([direction_size,]) * 2 * np.pi
+        vecs = np.vstack([np.cos(directions), np.sin(directions)]).transpose()
+        probes = mean + vecs
+        probes_lcb = self.get_confidential_interval(probes)[:,0]
+        decent_direction = np.argmin(probes_lcb)
+        if isinstance(decent_direction, list):
+            decent_direction = decent_direction[0]
+        return (probes[decent_direction] - mean).tolist()
 
 
 class SafeOpt(GaussianProcessOptimization):

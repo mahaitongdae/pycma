@@ -50,9 +50,10 @@ from __future__ import print_function  # available since 2.6, not needed
 ___author__ = "Nikolaus Hansen"
 __license__ = "public domain"
 
+import random
 from sys import stdout as _stdout # not strictly necessary
 import warnings as _warnings
-from math import log, exp
+from math import log, exp, pi, cos, sin
 from random import normalvariate as random_normalvariate
 
 try:
@@ -404,6 +405,69 @@ class CMAES(OOOptimizer):  # could also inherit from object
         for i in range(N):  # update evolution path ps
             self.ps[i] = (1 - par.cs) * self.ps[i] + csn * z[i]
         ccn = (par.cc * (2 - par.cc) * par.mueff)**0.5 / self.sigma
+        # turn off rank-one accumulation when sigma increases quickly
+        hsig = (sum(x**2 for x in self.ps) / N  # ||ps||^2 / N is 1 in expectation
+                / (1-(1-par.cs)**(2*self.counteval/par.lam))  # account for initial value of ps
+                < 2 + 4./(N+1))  # should be smaller than 2 + ...
+        for i in range(N):  # update evolution path pc
+            self.pc[i] = (1 - par.cc) * self.pc[i] + ccn * hsig * y[i]
+
+        ### Adapt covariance matrix C
+        # minor adjustment for the variance loss from hsig
+        c1a = par.c1 * (1 - (1-hsig**2) * par.cc * (2-par.cc))
+        self.C.multiply_with(1 - c1a - par.cmu * sum(par.weights))  # C *= 1 - c1 - cmu * sum(w)
+        self.C.addouter(self.pc, par.c1)  # C += c1 * pc * pc^T, so-called rank-one update
+        for k, wk in enumerate(par.weights):  # so-called rank-mu update
+            if wk < 0:  # guaranty positive definiteness
+                wk *= N * (self.sigma / self.C.mahalanobis_norm(minus(arx[k], xold)))**2
+            self.C.addouter(minus(arx[k], xold),  # C += wk * cmu * dx * dx^T
+                            wk * par.cmu / self.sigma**2)
+
+        ### Adapt step-size sigma
+        cn, sum_square_ps = par.cs / par.damps, sum(x**2 for x in self.ps)
+        self.sigma *= exp(min(1, cn * (sum_square_ps / N - 1) / 2))
+        # self.sigma *= exp(min(1, cn * (sum_square_ps**0.5 / par.chiN - 1)))
+
+    def tell_gp(self, arx, fitvals, gp):
+        """update the evolution paths and the distribution parameters m,
+        sigma, and C within CMA-ES.
+
+        Parameters
+        ----------
+            `arx`: `list` of "row vectors"
+                a list of candidate solution vectors, presumably from
+                calling `ask`. ``arx[k][i]`` is the i-th element of
+                solution vector k.
+            `fitvals`: `list`
+                the corresponding objective function values, to be
+                minimised
+        """
+        ### bookkeeping and convenience short cuts
+        self.counteval += len(fitvals)  # evaluations used within tell
+        N = len(self.xmean)
+        par = self.params
+        xold = self.xmean  # not a copy, xmean is assigned anew later
+
+        ### Sort by fitness
+        arx = [arx[k] for k in argsort(fitvals)]  # sorted arx
+        self.fitvals = sorted(fitvals)  # used for termination and display only
+        self.best.update(arx[0], self.fitvals[0], self.counteval)
+
+        ### recombination, compute new weighted mean value
+        self.xmean = dot(arx[0:par.mu], par.weights[:par.mu], transpose=True)
+        #          = [sum(self.weights[k] * arx[k][i] for k in range(self.mu))
+        #                                             for i in range(N)]
+
+        ### compute optimistic gradient from gp
+        gp_grad = gp.suggest_gradient(self.xmean)
+
+        ### Cumulation: update evolution paths
+        y = minus(self.xmean, xold)
+        z = dot(self.C.invsqrt, y)  # == C**(-1/2) * (xnew - xold)
+        csn = (par.cs * (2 - par.cs) * par.mueff)**0.5 / self.sigma
+        for i in range(N):  # update evolution path ps
+            self.ps[i] = (1 - par.cs) * self.ps[i] + csn * z[i]
+        ccn = (par.cc * (2 - par.cc) * par.mueff)**0.5 / self.sigma #
         # turn off rank-one accumulation when sigma increases quickly
         hsig = (sum(x**2 for x in self.ps) / N  # ||ps||^2 / N is 1 in expectation
                 / (1-(1-par.cs)**(2*self.counteval/par.lam))  # account for initial value of ps
