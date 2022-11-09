@@ -322,11 +322,11 @@ class GaussianProcessOptimization(object):
             std_devs[:, i] = mean + beta * std_dev
         return means, std_devs
 
-    def suggest_gradient(self, mean, direction_size=100):
+    def suggest_gradient(self, mean, radius=1., direction_size=100):
         mean = np.asarray(mean)
         # opti_ucb = self.get_confidential_interval(mean)[:, 1]
         directions = np.random.random([direction_size,]) * 2 * np.pi
-        vecs = np.vstack([np.cos(directions), np.sin(directions)]).transpose()
+        vecs = radius * np.vstack([np.cos(directions), np.sin(directions)]).transpose()
         probes = mean + vecs
         probes_lcb = self.get_confidential_interval(probes)[:,0]
         decent_direction = np.argmin(probes_lcb)

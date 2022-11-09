@@ -459,9 +459,6 @@ class CMAES(OOOptimizer):  # could also inherit from object
         #          = [sum(self.weights[k] * arx[k][i] for k in range(self.mu))
         #                                             for i in range(N)]
 
-        ### compute optimistic gradient from gp
-        gp_grad = gp.suggest_gradient(self.xmean)
-
         ### Cumulation: update evolution paths
         y = minus(self.xmean, xold)
         z = dot(self.C.invsqrt, y)  # == C**(-1/2) * (xnew - xold)
@@ -470,7 +467,10 @@ class CMAES(OOOptimizer):  # could also inherit from object
             self.ps[i] = (1 - par.cs) * self.ps[i] + csn * z[i]
         ccn = (par.cc * (2 - par.cc) * par.mueff / 2)**0.5 / self.sigma #
 
-        norm_gp_grad =  sum([k**2 for k in y])**0.5 # use y norm to normalize gp
+        ### compute optimistic gradient from gp
+        gp_grad = gp.suggest_gradient(self.xmean, radius=sum([k**2 for k in y])**0.5)
+
+        norm_gp_grad = 1.   # use y norm to normalize gp
         # turn off rank-one accumulation when sigma increases quickly
         hsig = (sum(x**2 for x in self.ps) / N  # ||ps||^2 / N is 1 in expectation
                 / (1-(1-par.cs)**(2*self.counteval/par.lam))  # account for initial value of ps
